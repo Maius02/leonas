@@ -1,140 +1,77 @@
 import streamlit as st
-import json
-import os
 import random
+import gspread
+import json
+from oauth2client.service_account import ServiceAccountCredentials
 
-# ---------- CONFIGURACION ----------
 st.set_page_config(page_title="🌸 Angelito Secreto", layout="centered")
 
-# ---------- FUNCIONES DE DATOS ----------
-def cargar_json(ruta, defecto):
-    if os.path.exists(ruta):
-        with open(ruta, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return defecto
+# Paleta de colores aesthetic
+COLORES = ["#FEC8D8", "#FCD5CE", "#D8E2DC", "#A9DEF9", "#E4C1F9", "#CDEAC0"]
 
-def guardar_json(ruta, datos):
-    with open(ruta, 'w', encoding='utf-8') as f:
-        json.dump(datos, f, indent=4, ensure_ascii=False)
+# Google Sheets setup
+@st.cache_resource
+def conectar_google_sheets():
+    creds_json = st.secrets["google"]["credentials"]
+    sheet_id = st.secrets["google"]["sheet_id"]
+    credentials_dict = json.loads(creds_json)
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+    client = gspread.authorize(credentials)
+    sheet = client.open_by_key(sheet_id).sheet1
+    return sheet
 
-def obtener_destinatario(nombre, historial):
+sheet = conectar_google_sheets()
+
+# Funciones
+@st.cache_data(ttl=60)
+def obtener_historial():
+    return sheet.get_all_records()
+
+def guardar_asignacion(usuario, asignado):
+    sheet.append_row([usuario, asignado])
+
+def obtener_asignacion(usuario):
+    historial = obtener_historial()
     for entrada in historial:
-        if entrada['angelito'] == nombre:
-            return entrada['destinatario']
+        if entrada['usuario'] == usuario:
+            return entrada['asignado']
     return None
 
-def participantes_disponibles(historial, yo, todos):
-    ya_fui_angelito_de = [a['destinatario'] for a in historial if a['angelito'] == yo]
-    return [p for p in todos if p != yo and p not in ya_fui_angelito_de]
+def participantes_disponibles(usuario):
+    historial = obtener_historial()
+    ya_asignados = [h['asignado'] for h in historial]
+    ya_jugaron = [h['usuario'] for h in historial]
+    restantes = [n for n in nombres if n != usuario and n not in ya_asignados and n not in ya_jugaron]
+    if not restantes:
+        restantes = [n for n in nombres if n != usuario and n not in ya_asignados]
+    return restantes
 
-def asignar_angelito(nombre, participantes, historial):
-    disponibles = participantes_disponibles(historial, nombre, participantes)
-    if not disponibles:
-        return None
-    elegido = random.choice(disponibles)
-    historial.append({"angelito": nombre, "destinatario": elegido})
-    guardar_json("historial.json", historial)
-    return elegido
+# Lista de participantes (podés mantenerla también en Sheets si querés)
+nombres = ["Caro", "Luli", "Meli", "Sofi", "Flor", "Vicky", "Gime"]
 
-# ---------- CARGA DE DATOS ----------
-config = cargar_json("config.json", {})
-participantes = config.get("participantes", {})
-admin_password = config.get("admin_password", "")
-ronda_habilitada = config.get("ronda_habilitada", True)
-historial = cargar_json("historial.json", [])
-
-# ---------- INTERFAZ ----------
+# UI
 st.markdown("""
-    <style>
-    .title { text-align: center; font-size: 2.8em; font-weight: bold; color: #d48ecb; margin-bottom: 0.5em; }
-    .subtle { font-style: italic; color: #888; text-align: center; }
-    </style>
+    <h1 style='text-align: center; color: #D88C9A;'>🌸 Angelito Secreto 🌸</h1>
+    <p style='text-align: center;'>Elegí tu nombre, ingresá tu contraseña secreta y descubrí tu persona asignada.</p>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="title">🌸 Angelito Secreto 🌸</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtle">Ingresá tu nombre y clave para descubrir o girar la ruleta</div>', unsafe_allow_html=True)
+usuario = st.selectbox("¿Quién sos?", nombres)
+clave = st.text_input("Contraseña secreta", type="password")
+boton = st.button("Girar la ruleta 🎡")
 
-nombre = st.selectbox("Tu nombre", [""] + list(participantes.keys()))
-clave = st.text_input("Tu clave secreta", type="password")
-
-usuario_valido = nombre and participantes.get(nombre) == clave
-
-if nombre and not usuario_valido:
-    st.error("⚠️ Clave incorrecta para ese nombre.")
-
-if usuario_valido:
-    if not ronda_habilitada:
-        st.warning("⚠️ La ronda está deshabilitada por el admin. Volvé más tarde.")
-    else:
-        ya_asignado = obtener_destinatario(nombre, historial)
-        if ya_asignado:
-            st.success(f"🎁 ¡Ya tenés a tu angelito secreto!: {ya_asignado}")
+if usuario and clave:
+    asignado_previo = obtener_asignacion(usuario)
+    if asignado_previo:
+        st.success(f"Ya te tocó: **{asignado_previo}** ✨\n\n¡Prepará tus sorpresas angelicales!")
+    elif boton:
+        posibles = participantes_disponibles(usuario)
+        if not posibles:
+            st.warning("Ya no quedan personas disponibles. ¡Todas fueron asignadas!")
         else:
-            st.markdown("### 🎡 Girá la ruleta para descubrir a quién mimar")
-
-            if st.button("🎠 Girar ruleta"):
-                elegido = asignar_angelito(nombre, list(participantes.keys()), historial)
-                if elegido:
-                    st.success(f"💖 ¡Te tocó: {elegido}! Guardalo en secreto... 🤫")
-                else:
-                    st.error("🚫 No quedan personas disponibles para vos.")
-
-            # Mostrar ruleta HTML
-            disponibles = participantes_disponibles(historial, nombre, list(participantes.keys()))
-            colores = ['#ffd6e8', '#ffe0b2', '#e0f7fa', '#c8e6c9', '#f8bbd0', '#d1c4e9', '#b3e5fc', '#f0f4c3']
-            segmentos = "".join([
-                f"{{label: \"{p}\", color: \"{colores[i % len(colores)]}\"}},"
-                for i, p in enumerate(disponibles)
-            ])
-
-            st.components.v1.html(f"""
-            <div style='text-align:center; margin-top: 30px;'>
-              <canvas id='wheel' width='300' height='300'></canvas>
-              <script>
-                const segmentos = [{segmentos}];
-                const canvas = document.getElementById("wheel");
-                const ctx = canvas.getContext("2d");
-                const total = segmentos.length;
-                const radius = canvas.width / 2;
-                let angleStart = 0;
-                let currentAngle = 0;
-                
-                function drawWheel() {{
-                  ctx.clearRect(0, 0, canvas.width, canvas.height);
-                  for (let i = 0; i < total; i++) {{
-                    const angle = (2 * Math.PI) / total;
-                    const start = angleStart + i * angle;
-                    const end = start + angle;
-                    ctx.beginPath();
-                    ctx.moveTo(radius, radius);
-                    ctx.arc(radius, radius, radius, start, end);
-                    ctx.fillStyle = segmentos[i].color;
-                    ctx.fill();
-                    ctx.save();
-                    ctx.translate(radius, radius);
-                    ctx.rotate(start + angle / 2);
-                    ctx.textAlign = "right";
-                    ctx.fillStyle = "#333";
-                    ctx.font = "bold 14px sans-serif";
-                    ctx.fillText(segmentos[i].label, radius - 10, 5);
-                    ctx.restore();
-                  }}
-                }}
-                drawWheel();
-              </script>
-            </div>
-            """, height=360)
-
-# ---------- PANEL ADMIN ----------
-with st.expander("🔒 Panel administrador"):
-    pw = st.text_input("Clave admin", type="password")
-    if pw == admin_password:
-        st.success("Acceso concedido.")
-        if st.button("🔁 Reiniciar juego"):
-            guardar_json("historial.json", [])
-            config["ronda_habilitada"] = True
-            guardar_json("config.json", config)
-            st.info("Juego reiniciado.")
-        activar = st.checkbox("✅ Habilitar ronda", value=config.get("ronda_habilitada", True))
-        config["ronda_habilitada"] = activar
-        guardar_json("config.json", config)
+            asignado = random.choice(posibles)
+            guardar_asignacion(usuario, asignado)
+            st.balloons()
+            st.success(f"Te tocó: **{asignado}** 🎁\n\n¡Guardá bien el secreto y sé un angelito atento! 💖")
+else:
+    st.info("Ingresá tu nombre y contraseña para comenzar.")
