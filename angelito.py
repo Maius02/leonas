@@ -18,7 +18,7 @@ def guardar_json(ruta, contenido):
         json.dump(contenido, f, indent=4, ensure_ascii=False)
 
 def participantes_disponibles(historial, yo, todos):
-    ya_fui_angelito_de = [asignacion['destinatario'] for asignacion in historial if asignacion['angelito'] == yo]
+    ya_fui_angelito_de = [a['destinatario'] for a in historial if a['angelito'] == yo]
     return [p for p in todos if p != yo and p not in ya_fui_angelito_de]
 
 def asignar_angelito(nombre, participantes, historial):
@@ -32,16 +32,16 @@ def asignar_angelito(nombre, participantes, historial):
 
 # ---------- CARGA DE DATOS ----------
 config = cargar_json("config.json", {})
-participantes = config.get("participantes", [])
+participantes = config.get("participantes", {})
 admin_password = config.get("admin_password", "")
 ronda_habilitada = config.get("ronda_habilitada", True)
 historial = cargar_json("historial.json", [])
 
-# ---------- ESTILOS PERSONALIZADOS ----------
+# ---------- ESTILOS ----------
 st.markdown("""
     <style>
     .title { text-align: center; font-size: 2.5em; font-weight: bold; color: #da70d6; margin-bottom: 0.5em; }
-    .ruleta { display: flex; justify-content: center; align-items: center; margin: 1em 0; }
+    .ruleta { display: flex; flex-wrap: wrap; justify-content: center; margin: 1em 0; }
     .petalo { background: #fcdff2; padding: 10px 20px; margin: 8px; border-radius: 999px; display: inline-block; font-weight: bold; }
     .mensaje { font-style: italic; text-align: center; color: #888; margin-bottom: 1em; }
     </style>
@@ -50,28 +50,34 @@ st.markdown("""
 st.markdown('<div class="title">🌸 Angelito Secreto 🌸</div>', unsafe_allow_html=True)
 st.markdown('<div class="mensaje">Cada 15 días se revelará una nueva persona para mimar con gestos secretos... ¡Sé un angelito ejemplar!</div>', unsafe_allow_html=True)
 
-# ---------- SELECCIÓN DE USUARIO ----------
-nombre = st.selectbox("Seleccioná tu nombre", [""] + participantes)
+# ---------- AUTENTICACIÓN DE PARTICIPANTE ----------
+st.header("🔑 Ingresá tus datos")
+nombre = st.selectbox("Tu nombre", [""] + list(participantes.keys()))
+clave_ingresada = st.text_input("Tu clave secreta", type="password")
 
-if nombre:
+usuario_valido = nombre and participantes.get(nombre) == clave_ingresada
+
+if nombre and not usuario_valido:
+    st.error("⚠️ Clave incorrecta para ese nombre.")
+
+if usuario_valido:
     if not ronda_habilitada:
         st.warning("⚠️ La ronda está deshabilitada por el admin. Volvé más tarde.")
     else:
         ya_participo = any(a['angelito'] == nombre for a in historial)
         if ya_participo:
             destinatario = next(a['destinatario'] for a in historial if a['angelito'] == nombre)
-            st.success(f"🎉 Ya te tocó: **{destinatario}**. ¡Prepará tus sorpresas angelicales!")
+            st.success(f"🎉 Ya te tocó tu angelito secreto. ¡Prepará tus sorpresas angelicales!")
         else:
             st.markdown("### 🌺 Ruleta de Angelitos")
             if st.button("🎡 Girar ruleta"):
-                elegido = asignar_angelito(nombre, participantes, historial)
+                elegido = asignar_angelito(nombre, list(participantes.keys()), historial)
                 if elegido:
                     st.balloons()
-                    st.success(f"🎉 ¡Tu angelito secreto es **{elegido}**! Guardalo en secreto 😉")
+                    st.success("🎉 ¡Tu angelito secreto ha sido elegido! Guardalo en secreto 😉")
                 else:
                     st.error("🚫 Ya fuiste angelito de todas. Esperá la próxima ronda.")
 
-            # RUEDA ESTÉTICA (simulada con pétalos + imagen central)
             st.markdown('<div class="ruleta">', unsafe_allow_html=True)
             for p in participantes:
                 if p != nombre:
@@ -83,7 +89,7 @@ if nombre:
 
 # ---------- PANEL ADMIN ----------
 with st.expander("🔒 Acceso administrador"):
-    pw = st.text_input("Clave secreta", type="password")
+    pw = st.text_input("Clave del admin", type="password")
     if pw == admin_password:
         st.success("Acceso concedido.")
         if st.button("🔁 Reiniciar juego"):
