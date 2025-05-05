@@ -2,7 +2,7 @@ import streamlit as st
 import random
 import gspread
 import json
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="🌸 Angelito Secreto", layout="centered")
 
@@ -15,8 +15,7 @@ def conectar_google_sheets():
     creds_json = st.secrets["google"]["credentials"]
     sheet_id = st.secrets["google"]["sheet_id"]
     credentials_dict = json.loads(creds_json)
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+    credentials = Credentials.from_service_account_info(credentials_dict)
     client = gspread.authorize(credentials)
     sheet = client.open_by_key(sheet_id).sheet1
     return sheet
