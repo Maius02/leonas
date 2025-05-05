@@ -83,7 +83,7 @@ if usuario_valido:
             disponibles = participantes_disponibles(historial, nombre, list(participantes.keys()))
             colores = ['#ffd6e8', '#ffe0b2', '#e0f7fa', '#c8e6c9', '#f8bbd0', '#d1c4e9', '#b3e5fc', '#f0f4c3']
             segmentos = "".join([
-                f"'{{label: \"{p}\", color: \"{colores[i % len(colores)]}\"}}',"
+                f"{{label: \"{p}\", color: \"{colores[i % len(colores)]}\"}},"
                 for i, p in enumerate(disponibles)
             ])
 
@@ -138,11 +138,3 @@ with st.expander("🔒 Panel administrador"):
         activar = st.checkbox("✅ Habilitar ronda", value=config.get("ronda_habilitada", True))
         config["ronda_habilitada"] = activar
         guardar_json("config.json", config)
-"""
-Este código te da:
-
-- 🎡 Ruleta visual real (canvas animado).
-- 💾 Registro persistente y secreto por nombre + contraseña.
-- 🎨 Paleta pastel aesthetic.
-
-"""
